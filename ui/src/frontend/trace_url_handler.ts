@@ -31,10 +31,21 @@ function getCurrentTraceUrl(): undefined | string {
   return undefined;
 }
 
+function getCurrentS3Uri(): undefined | string {
+  const source = AppImpl.instance.trace?.traceInfo.source;
+  return source?.type === 'S3' ? source.uri : undefined;
+}
+
 export function maybeOpenTraceFromRoute(route: Route) {
   if (route.args.s) {
     // /?s=xxxx for permalinks.
     loadPermalink(route.args.s);
+    return;
+  }
+
+  const s3Uri = route.args.s3;
+  if (s3Uri && s3Uri !== getCurrentS3Uri()) {
+    AppImpl.instance.openTraceFromS3(s3Uri);
     return;
   }
 

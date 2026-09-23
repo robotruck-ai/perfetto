@@ -43,6 +43,9 @@ export const ROUTE_SCHEMA = z
     // as with record_android_trace.
     url: z.string().optional().catch(undefined),
 
+    // S3 traces are fetched through the same-origin /api/traces/s3 endpoint.
+    s3: z.string().optional().catch(undefined),
+
     // For connecting to a trace_processor_shell --httpd instance running on a
     // non-standard port. This requires the CSP_WS_PERMISSIVE_PORT flag to relax
     // the Content Security Policy.

@@ -200,6 +200,10 @@ async function loadTraceIntoEngine(
     traceStream = new TraceBufferStream(traceSource.buffer);
   } else if (traceSource.type === 'URL') {
     traceStream = new TraceHttpStream(traceSource.url);
+  } else if (traceSource.type === 'S3') {
+    const url = new URL('/api/traces/s3', self.location.origin);
+    url.searchParams.set('uri', traceSource.uri);
+    traceStream = new TraceHttpStream(url.href);
   } else if (traceSource.type === 'STREAM') {
     traceStream = traceSource.stream;
   } else if (traceSource.type === 'HTTP_RPC') {
@@ -598,6 +602,9 @@ async function getTraceInfo(
     case 'URL':
       traceUrl = traceSource.url;
       traceTitle = traceUrl.split('/').pop()!;
+      break;
+    case 'S3':
+      traceTitle = traceSource.uri.split('/').pop()!;
       break;
     case 'ARRAY_BUFFER':
       traceTitle = traceSource.title;
