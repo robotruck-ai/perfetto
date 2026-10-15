@@ -101,6 +101,11 @@ class SummarizerImpl : public Summarizer {
   // Computes a hash of raw proto bytes for change detection.
   std::string ComputeProtoHash(const uint8_t* data, size_t size);
 
+  // Prepares a generator and materializes a single query with it, so that the
+  // queries materialized before are read as table sources.
+  base::Status PrepareAndMaterializeQuery(const std::string& query_id,
+                                          QueryState& state);
+
   // Materializes a single query using a pre-configured generator.
   // The generator must have all queries added and modules/preambles executed.
   base::Status MaterializeQuery(
@@ -112,7 +117,7 @@ class SummarizerImpl : public Summarizer {
   std::vector<std::string> CollectDependencies(const std::string& query_id);
 
   // Prepares the generator for materialization (adds queries, executes modules
-  // and preambles). Called once per Query() invocation.
+  // and preambles). Called before each query materialized by Query().
   base::Status PrepareGenerator(
       perfetto_sql::generator::StructuredQueryGenerator& generator,
       std::vector<std::vector<uint8_t>>& table_source_protos);

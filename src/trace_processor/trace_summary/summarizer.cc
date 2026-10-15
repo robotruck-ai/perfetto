@@ -457,6 +457,19 @@ base::Status SummarizerImpl::PrepareGenerator(
   return base::OkStatus();
 }
 
+base::Status SummarizerImpl::PrepareAndMaterializeQuery(
+    const std::string& query_id,
+    QueryState& state) {
+  StructuredQueryGenerator generator;
+  std::vector<std::vector<uint8_t>> table_source_protos;
+  auto prepare_status = PrepareGenerator(generator, table_source_protos);
+  if (!prepare_status.ok()) {
+    state.error = prepare_status.message();
+    return prepare_status;
+  }
+  return MaterializeQuery(query_id, state, generator);
+}
+
 base::Status SummarizerImpl::MaterializeQuery(
     const std::string& query_id,
     QueryState& state,
@@ -698,17 +711,11 @@ base::Status SummarizerImpl::Query(const std::string& query_id,
 
   // Lazy materialization: materialize if needed.
   if (state->needs_materialization) {
-    // Prepare the generator ONCE (adds all queries, executes
-    // modules/preambles).
-    StructuredQueryGenerator generator;
-    std::vector<std::vector<uint8_t>> table_source_protos;
-    auto prepare_status = PrepareGenerator(generator, table_source_protos);
-    if (!prepare_status.ok()) {
-      state->error = prepare_status.message();
-      return prepare_status;
-    }
-
-    // Materialize dependencies first.
+    // Materialize dependencies first, then the target query. The generator is
+    // prepared again before each one (adds all queries, executes
+    // modules/preambles) so that it reads the dependencies materialized just
+    // before as table sources: with a generator prepared once, they would be
+    // inlined and their SQL run again inside every query that depends on them.
     auto deps = CollectDependencies(query_id);
     for (const auto& dep_id : deps) {
       if (dep_id == query_id) {
@@ -716,7 +723,7 @@ base::Status SummarizerImpl::Query(const std::string& query_id,
       }
       QueryState* dep_state = query_states_.Find(dep_id);
       if (dep_state && dep_state->needs_materialization) {
-        auto status = MaterializeQuery(dep_id, *dep_state, generator);
+        auto status = PrepareAndMaterializeQuery(dep_id, *dep_state);
         if (!status.ok()) {
           // Dependency failed - propagate error.
           state->error =
@@ -728,7 +735,7 @@ base::Status SummarizerImpl::Query(const std::string& query_id,
 
     // Now materialize the target query (if dependencies succeeded).
     if (!state->error) {
-      auto status = MaterializeQuery(query_id, *state, generator);
+      auto status = PrepareAndMaterializeQuery(query_id, *state);
       if (!status.ok()) {
         return status;
       }

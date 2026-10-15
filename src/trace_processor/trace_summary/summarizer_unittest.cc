@@ -32,6 +32,7 @@ namespace perfetto::trace_processor::summary {
 namespace {
 
 using ::testing::HasSubstr;
+using ::testing::Not;
 // Import public types from parent namespace.
 using ::perfetto::trace_processor::Summarizer;
 using ::perfetto::trace_processor::SummarizerQueryResult;
@@ -620,6 +621,67 @@ TEST_F(SummarizerTest, NestedEmbeddedQueryDependencyPropagation) {
 
   // C should also reflect A's change (1 row now, since only value=1 > 0).
   EXPECT_EQ(info_c2.row_count, 1);
+}
+
+TEST_F(SummarizerTest, DependenciesMaterializedInSameQueryAreReused) {
+  // A <- B <- C, where B and C read their input as a SQL dependency
+  // ($input_0) that references it by id. Querying C materializes all three in
+  // one Query() call; B and C must read the tables materialized just before
+  // instead of running A's (and B's) SQL again.
+  protozero::HeapBuffered<protos::pbzero::TraceSummarySpec> spec_proto;
+  {
+    auto* query = spec_proto->add_query();
+    query->set_id("A");
+    auto* sql_source = query->set_sql();
+    sql_source->set_sql("SELECT 1 AS value UNION ALL SELECT 2 AS value");
+    sql_source->add_column_names("value");
+  }
+  {
+    auto* query = spec_proto->add_query();
+    query->set_id("B");
+    auto* sql_source = query->set_sql();
+    sql_source->set_sql("SELECT value FROM $input_0 WHERE value > 1");
+    sql_source->add_column_names("value");
+    auto* dep = sql_source->add_dependencies();
+    dep->set_alias("input_0");
+    auto* ref = dep->set_query();
+    ref->set_id("B_input_0_ref");
+    ref->set_inner_query_id("A");
+  }
+  {
+    auto* query = spec_proto->add_query();
+    query->set_id("C");
+    auto* sql_source = query->set_sql();
+    sql_source->set_sql("SELECT value * 10 AS value FROM $input_0");
+    sql_source->add_column_names("value");
+    auto* dep = sql_source->add_dependencies();
+    dep->set_alias("input_0");
+    auto* ref = dep->set_query();
+    ref->set_id("C_input_0_ref");
+    ref->set_inner_query_id("B");
+  }
+  auto spec_data = spec_proto.SerializeAsArray();
+
+  SummarizerUpdateSpecResult update_result;
+  ASSERT_OK(summarizer_->UpdateSpec(spec_data.data(), spec_data.size(),
+                                    &update_result));
+
+  SummarizerQueryResult info_c;
+  ASSERT_OK(summarizer_->Query("C", &info_c));
+  ASSERT_TRUE(info_c.exists);
+  EXPECT_EQ(info_c.row_count, 1);
+
+  SummarizerQueryResult info_a;
+  ASSERT_OK(summarizer_->Query("A", &info_a));
+  SummarizerQueryResult info_b;
+  ASSERT_OK(summarizer_->Query("B", &info_b));
+  ASSERT_FALSE(info_a.table_name.empty());
+  ASSERT_FALSE(info_b.table_name.empty());
+
+  EXPECT_THAT(info_b.sql, HasSubstr(info_a.table_name));
+  EXPECT_THAT(info_b.sql, Not(HasSubstr("UNION ALL")));
+  EXPECT_THAT(info_c.sql, HasSubstr(info_b.table_name));
+  EXPECT_THAT(info_c.sql, Not(HasSubstr("UNION ALL")));
 }
 
 TEST_F(SummarizerTest, MultipleSummarizersCoexist) {

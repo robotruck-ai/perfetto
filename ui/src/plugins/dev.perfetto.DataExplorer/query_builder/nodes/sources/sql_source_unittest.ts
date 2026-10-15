@@ -107,6 +107,31 @@ describe('SqlSourceNode', () => {
       expect(sq?.sql?.dependencies?.length ?? 0).toBe(0);
     });
 
+    it('should save discovered columns with the node', () => {
+      const node = new SqlSourceNode(
+        {sql: 'SELECT id, ts FROM slice'},
+        {trace: mockTrace},
+      );
+      node.onQueryExecuted(['id', 'ts']);
+      expect(node.attrs.columns).toEqual(['id', 'ts']);
+    });
+
+    it('should not change its query when saved columns are rediscovered', () => {
+      // Restored with the columns saved by an earlier execution: the
+      // execution finds the same columns, so the query (and the summarizer's
+      // materialized table) stays the same.
+      const node = new SqlSourceNode(
+        {sql: 'SELECT id, ts FROM slice', columns: ['id', 'ts']},
+        {trace: mockTrace},
+      );
+      expect(node.finalCols.map((c) => c.name)).toEqual(['id', 'ts']);
+
+      const before = JSON.stringify(node.getStructuredQuery()?.toJSON());
+      node.onQueryExecuted(['id', 'ts']);
+      const after = JSON.stringify(node.getStructuredQuery()?.toJSON());
+      expect(after).toEqual(before);
+    });
+
     it('should include dependencies for connected inputs', () => {
       const node = new SqlSourceNode(
         {sql: 'SELECT * FROM $input_0'},
@@ -122,6 +147,25 @@ describe('SqlSourceNode', () => {
       expect(sq).toBeDefined();
       expect(sq?.sql?.dependencies?.length).toBe(1);
       expect(sq?.sql?.dependencies?.[0].alias).toBe('input_0');
+    });
+
+    it('should reference inputs by id instead of embedding them', () => {
+      const node = new SqlSourceNode(
+        {sql: 'SELECT * FROM $input_0'},
+        {trace: mockTrace},
+      );
+
+      const input0 = createMockNodeWithStructuredQuery('node0', [
+        createColumnInfo('id', 'int'),
+      ]);
+      connectSecondary(input0, node, 0);
+
+      // A reference lets the summarizer materialize the input once and reuse
+      // it, however many SQL sources read it.
+      const dep = node.getStructuredQuery()?.sql?.dependencies?.[0].query;
+      expect(dep?.innerQueryId).toBe('node0');
+      expect(dep?.id).toBe(`${node.nodeId}_input_0_ref`);
+      expect(dep?.sql).toBeFalsy();
     });
 
     it('should include multiple dependencies with correct aliases', () => {
