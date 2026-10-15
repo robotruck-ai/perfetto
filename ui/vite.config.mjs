@@ -165,16 +165,20 @@ function makeSynthModulePlugin({name, modules}) {
 // here: that module now uses Vite's import.meta.glob directly, which discovers
 // plugin dirs and re-evaluates on add/remove without manual file-watching.
 
-// Exposes VERSION and SCM_REVISION via ui/src/virtual/version (typed by
-// version.d.ts). Replaces the on-disk ui/src/gen/perfetto_version.ts that
-// build.mjs used to generate via tools/write_version_header.py.
+// Exposes VERSION, VERSION_LABEL and SCM_REVISION via ui/src/virtual/version
+// (typed by version.d.ts). Replaces the on-disk ui/src/gen/perfetto_version.ts
+// that build.mjs used to generate via tools/write_version_header.py.
 export function pluginPerfettoVersion() {
   const SCRIPT = path.join(ROOT_DIR, 'tools/write_version_header.py');
   const generate = () => {
     const out = execFileSync('python3', [SCRIPT, '--json'], {encoding: 'utf8'});
     const {version, sha1} = JSON.parse(out);
+    // Builds that ship the UI under their own release number set
+    // PERFETTO_UI_VERSION_LABEL to show it instead of the Perfetto version.
+    const label = process.env.PERFETTO_UI_VERSION_LABEL || version;
     return (
       `export const VERSION = ${JSON.stringify(version)};\n` +
+      `export const VERSION_LABEL = ${JSON.stringify(label)};\n` +
       `export const SCM_REVISION = ${JSON.stringify(sha1)};\n`
     );
   };
