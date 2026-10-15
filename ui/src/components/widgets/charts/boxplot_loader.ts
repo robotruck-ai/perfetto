@@ -24,9 +24,16 @@ import {validateColumnName} from './chart_utils';
 export interface BoxplotLoaderConfig {
   /**
    * Maximum number of categories to show.
-   * Categories are ordered by median value descending.
+   * Categories are ordered by median value descending, unless
+   * `categoryOrder` is given.
    */
   readonly limit?: number;
+
+  /**
+   * Categories to show first, in this order (e.g. the steps of a pipeline).
+   * Categories not listed follow, ordered by median value descending.
+   */
+  readonly categoryOrder?: ReadonlyArray<string>;
 }
 
 /**
@@ -71,6 +78,13 @@ export class SQLBoxplotLoader {
 
   use(config: BoxplotLoaderConfig): AsyncMemoResult<BoxplotData> {
     const limit = config.limit ?? 20;
+    const order = config.categoryOrder ?? [];
+    const orderBy =
+      order.length === 0
+        ? 'q._median DESC'
+        : `CASE s._cat ${order
+            .map((c, i) => `WHEN ${sqlString(c)} THEN ${i}`)
+            .join(' ')} ELSE ${order.length} END, q._median DESC`;
     const cat = this.categoryColumn;
     const val = this.valueColumn;
 
@@ -118,7 +132,7 @@ SELECT
   s._max
 FROM _stats s
 JOIN _quartiles q ON s._cat = q._cat
-ORDER BY q._median DESC
+ORDER BY ${orderBy}
 LIMIT ${limit}`.trim();
 
     return this.querySlot.use({
@@ -156,4 +170,8 @@ LIMIT ${limit}`.trim();
   dispose(): void {
     this.querySlot.dispose();
   }
+}
+
+function sqlString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }

@@ -31,12 +31,14 @@ import {
   type DashboardBrushFilter,
   type DashboardDataSource,
   type DashboardItem,
+  type DashboardSelect,
   DEFAULT_COL_SPAN,
   DEFAULT_ROW_SPAN,
   GRID_COLUMNS,
   GRID_MARGIN,
   MIN_COL_SPAN,
   MIN_ROW_SPAN,
+  SELECT_ROW_SPAN,
   checkOverlap,
   findNonOverlappingPosition,
   getItemBounds,
@@ -49,6 +51,8 @@ import {
   DashboardChartView,
   createDefaultChartConfig,
 } from './dashboard_chart_view';
+import {DashboardSelectView} from './dashboard_select_view';
+import {DashboardRepeatView} from './dashboard_repeat_view';
 import {ResizeHandle} from '../../../widgets/resize_handle';
 import {Card} from '../../../widgets/card';
 import {
@@ -64,7 +68,7 @@ import {Select} from '../../../widgets/select';
 const DEFAULT_DIVIDER_LABEL = 'Filter boundary';
 // CSS selector for elements that should not initiate a card drag.
 const DRAG_EXCLUDED_SELECTORS =
-  'textarea, button, input, .pf-resize-handle, canvas';
+  'textarea, button, input, select, .pf-resize-handle, canvas';
 // Delay (ms) after a drag gesture during which title click-to-edit is
 // suppressed, so releasing the pointer doesn't accidentally open the editor.
 const DRAG_EDIT_SUPPRESS_MS = 300;
@@ -145,6 +149,8 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
   // Incremented when filters are removed from the filter bar, so that
   // chart brush overlays are cleared in sync.
   private brushClearGen = 0;
+  // Row spans of repeat items, which grow to fit their content.
+  private readonly repeatRowSpans = new Map<string, number>();
 
   // Grid measurement — updated via ResizeObserver on the canvas element.
   private canvasWidth = 1200;
@@ -320,6 +326,16 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
             },
             [m(Icon, {icon: 'text_fields'}), 'Label'],
           ),
+          lastSource !== undefined &&
+            m(
+              '.pf-dashboard__add-panel-item',
+              {
+                onclick: () => {
+                  this.addSelect(attrs, lastSource);
+                },
+              },
+              [m(Icon, {icon: 'arrow_drop_down_circle'}), 'Dropdown filter'],
+            ),
           m(
             '.pf-dashboard__add-panel-item',
             {
@@ -508,7 +524,8 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
     let maxRow = 0;
     for (const item of items) {
       const b = getItemBounds(item);
-      maxRow = Math.max(maxRow, b.row + b.rowSpan);
+      const rowSpan = this.repeatRowSpans.get(getItemId(item)) ?? b.rowSpan;
+      maxRow = Math.max(maxRow, b.row + rowSpan);
     }
     const cs = this.cellSize;
     const height = (maxRow + 2 + GRID_MARGIN) * cs;
@@ -562,6 +579,12 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
       }
       if (item.kind === 'divider') {
         return this.renderDivider(attrs, item);
+      }
+      if (item.kind === 'select') {
+        return this.renderSelect(attrs, item);
+      }
+      if (item.kind === 'repeat') {
+        return this.renderRepeat(attrs, item);
       }
       const source = attrs.sources.find((s) => s.nodeId === item.sourceNodeId);
       if (source === undefined) {
@@ -728,6 +751,118 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
     ]);
   }
 
+  private renderSelect(
+    attrs: DashboardAttrs,
+    select: DashboardItem & {kind: 'select'},
+  ): m.Child {
+    const itemId = select.id;
+    const source = attrs.sources.find((s) => s.nodeId === select.sourceNodeId);
+    const updateSelect = (
+      update: Partial<Pick<DashboardSelect, 'column' | 'required'>>,
+    ) => {
+      this.mapItems(attrs, (i) =>
+        getItemId(i) === itemId ? {...i, ...update} : i,
+      );
+    };
+
+    const settingsMenu =
+      source !== undefined &&
+      m(
+        PopupMenu,
+        {
+          trigger: m(Button, {
+            icon: 'settings',
+            title: 'Dropdown settings',
+            compact: true,
+          }),
+        },
+        m(MenuItem, {
+          label: 'Required (no "All" option)',
+          icon: select.required ? Icons.Checkbox : Icons.BlankCheckbox,
+          onclick: () => updateSelect({required: !select.required}),
+        }),
+        m(MenuItem, {label: 'Column', icon: 'view_column'}, [
+          ...source.columns.map((c) =>
+            m(MenuItem, {
+              label: c.name,
+              icon: c.name === select.column ? 'check' : undefined,
+              onclick: () => {
+                if (c.name === select.column) return;
+                // Drop the old column's selection along with the column.
+                this.clearBrushFiltersForColumn(
+                  attrs,
+                  select.sourceNodeId,
+                  select.column,
+                );
+                updateSelect({column: c.name});
+              },
+            }),
+          ),
+        ]),
+      );
+
+    // A single row: label, search box, then the usual card actions.
+    return this.renderItemCard(attrs, itemId, select, [
+      m('.pf-dashboard__select-row', [
+        m('.pf-dashboard__select-label', select.label ?? select.column),
+        m(
+          '.pf-dashboard__select-input',
+          source === undefined
+            ? m(
+                '.pf-dashboard__select-status.pf-dashboard__select-status--error',
+                'Data source removed',
+              )
+            : m(DashboardSelectView, {
+                trace: attrs.trace,
+                source,
+                select,
+                allSources: attrs.sources,
+                brushFilters: attrs.brushFilters,
+                onBrushFiltersChange: attrs.onBrushFiltersChange,
+              }),
+        ),
+        m('.pf-dashboard__chart-actions', [
+          source !== undefined &&
+            m(Chip, {
+              label: source.name,
+              icon: 'storage',
+              compact: true,
+              className: classNames('pf-dashboard__source-chip'),
+            }),
+          settingsMenu,
+          this.deleteButton(attrs, itemId),
+        ]),
+      ]),
+    ]);
+  }
+
+  private renderRepeat(
+    attrs: DashboardAttrs,
+    repeat: DashboardItem & {kind: 'repeat'},
+  ): m.Child {
+    const itemId = repeat.id;
+    return this.renderItemCard(attrs, itemId, repeat, [
+      m('.pf-dashboard__label-delete', this.deleteButton(attrs, itemId)),
+      m(DashboardRepeatView, {
+        trace: attrs.trace,
+        dashboardId: attrs.dashboardId,
+        repeat,
+        items: attrs.items,
+        allSources: attrs.sources,
+        brushFilters: attrs.brushFilters,
+        gridLines: this.settings.chartGridLines,
+        onContentHeight: (px: number) => {
+          // Grow (or shrink) the card to its content, in whole grid rows.
+          const rows = Math.max(MIN_ROW_SPAN, Math.ceil(px / this.cellSize));
+          if (this.repeatRowSpans.get(itemId) !== rows) {
+            this.repeatRowSpans.set(itemId, rows);
+            m.redraw();
+          }
+        },
+      }),
+    ]);
+  }
+
   private renderDivider(
     attrs: DashboardAttrs,
     divider: DashboardItem & {kind: 'divider'},
@@ -792,7 +927,8 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
     const col = temp?.col ?? item.col ?? 0;
     const row = temp?.row ?? item.row ?? 0;
     const colSpan = item.colSpan ?? DEFAULT_COL_SPAN;
-    const rowSpan = item.rowSpan ?? DEFAULT_ROW_SPAN;
+    const rowSpan =
+      this.repeatRowSpans.get(itemId) ?? item.rowSpan ?? DEFAULT_ROW_SPAN;
 
     const style = [
       `left: ${(col + GRID_MARGIN) * cs}px`,
@@ -858,7 +994,10 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
             const itemCol = item.col ?? 0;
             const itemRow = item.row ?? 0;
             const curColSpan = item.colSpan ?? DEFAULT_COL_SPAN;
-            const newSpan = Math.max(MIN_ROW_SPAN, Math.round(positionPx / cs));
+            const newSpan = Math.max(
+              item.kind === 'select' ? SELECT_ROW_SPAN : MIN_ROW_SPAN,
+              Math.round(positionPx / cs),
+            );
             if (
               newSpan !== (item.rowSpan ?? DEFAULT_ROW_SPAN) &&
               !checkOverlap(
@@ -1044,6 +1183,30 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
       id,
     );
     items.push({kind: 'label', id, text: '', col: pos.col, row: pos.row});
+    attrs.onItemsChange(items);
+  }
+
+  private addSelect(attrs: DashboardAttrs, source: DashboardDataSource): void {
+    const items = [...attrs.items];
+    const id = shortUuid();
+    const candidate = getNextItemPosition(items);
+    const pos = findNonOverlappingPosition(
+      candidate.col,
+      candidate.row,
+      DEFAULT_COL_SPAN,
+      SELECT_ROW_SPAN,
+      items,
+      id,
+    );
+    items.push({
+      kind: 'select',
+      id,
+      sourceNodeId: source.nodeId,
+      column: source.columns[0]?.name ?? '',
+      col: pos.col,
+      row: pos.row,
+      rowSpan: SELECT_ROW_SPAN,
+    });
     attrs.onItemsChange(items);
   }
 
@@ -1316,10 +1479,13 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
       );
     }
 
-    // Partition sources into used (has at least one chart) and unused.
+    // Partition sources into used (has at least one chart or dropdown) and
+    // unused.
     const items = attrs.items;
     const usedNodeIds = new Set(
-      items.filter((i) => i.kind === 'chart').map((i) => i.sourceNodeId),
+      items
+        .filter((i) => i.kind === 'chart' || i.kind === 'select')
+        .map((i) => i.sourceNodeId),
     );
     const used = allExported.filter((s) => usedNodeIds.has(s.nodeId));
     const unused = allExported.filter((s) => !usedNodeIds.has(s.nodeId));

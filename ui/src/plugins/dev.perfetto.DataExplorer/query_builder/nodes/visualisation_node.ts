@@ -137,6 +137,11 @@ export interface ChartConfig {
    * Optional bubble-size column for scatter charts (numeric).
    */
   sizeColumn?: string;
+  /**
+   * Optional category order for box plots: listed categories come first, in
+   * this order; the others follow by median value descending.
+   */
+  categoryOrder?: string[];
 }
 
 /**

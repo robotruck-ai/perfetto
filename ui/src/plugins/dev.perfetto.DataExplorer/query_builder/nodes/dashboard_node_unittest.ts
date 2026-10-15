@@ -15,6 +15,7 @@
 import {NodeType} from '../../query_node';
 import {dashboardRegistry} from '../../dashboard/dashboard_registry';
 import {DashboardNode} from './dashboard_node';
+import type {ColumnInfo} from '../column_info';
 import {
   createMockSourceNode,
   createMockNode,
@@ -305,6 +306,34 @@ describe('DashboardNode', () => {
       expect(mockRequest).toHaveBeenCalledWith('src-1');
       expect(mockGetTable).toHaveBeenCalledWith('src-1');
       expect(exported?.tableName).toBe('table_42');
+    });
+
+    test('republishes columns only known after execution', async () => {
+      // E.g. a SQL source, which learns its columns when its query runs.
+      const columns: ColumnInfo[] = [];
+      const source = createMockNode({nodeId: 'src-1', columns});
+      const mockRequest = vi.fn().mockImplementation(async () => {
+        columns.push(...STANDARD_TABLE_COLUMNS());
+      });
+      const node = new DashboardNode(
+        {},
+        {
+          getTableNameForNode: vi.fn().mockResolvedValue('table_42'),
+          requestNodeExecution: mockRequest,
+        },
+      );
+      connectNodes(source, node);
+      node.onPrevNodesUpdated();
+
+      const before = dashboardRegistry.getExportedSource(node.nodeId);
+      expect(before?.columns).toEqual([]);
+      await before?.requestExecution?.();
+
+      const after = dashboardRegistry.getExportedSource(node.nodeId);
+      expect(after?.columns.map((c) => c.name)).toEqual(
+        STANDARD_TABLE_COLUMNS().map((c) => c.name),
+      );
+      expect(after?.tableName).toBe('table_42');
     });
 
     test('published source includes requestExecution callback', () => {

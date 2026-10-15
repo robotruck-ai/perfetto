@@ -150,10 +150,10 @@ export class DashboardNode implements QueryNode {
   }
 
   /** Publish this node's data to the global exported sources pool. */
-  private publishExportedSource(): void {
+  private publishExportedSource(): DashboardDataSource | undefined {
     if (this.primaryInput === undefined) {
       dashboardRegistry.removeExportedSource(this.nodeId);
-      return;
+      return undefined;
     }
     const parentNodeId = this.primaryInput.nodeId;
     const source: DashboardDataSource = {
@@ -163,11 +163,22 @@ export class DashboardNode implements QueryNode {
       graphId: this.graphId ?? '',
       requestExecution: async () => {
         await this.context.requestNodeExecution?.(parentNodeId);
+        // Inputs whose schema is only known after execution (e.g. SQL
+        // sources) have their columns now, so publish them again.
+        const updated = this.publishExportedSource() ?? source;
         // After execution, resolve the table name so the chart can render.
-        await this.resolveTableName(source, parentNodeId);
+        await this.resolveTableName(updated, parentNodeId);
+        // Keep the object callers already hold usable as well.
+        source.tableName = updated.tableName;
+        // Redraw only on success: views request execution again while the
+        // source has no data, so a redraw after a failure would loop.
+        if (updated.columns.length > 0 && updated.tableName !== undefined) {
+          m.redraw();
+        }
       },
     };
     dashboardRegistry.setExportedSource(source);
+    return source;
   }
 
   private async resolveTableName(

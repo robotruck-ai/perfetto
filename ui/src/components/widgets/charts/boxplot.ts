@@ -152,8 +152,10 @@ function buildBoxplotOption(
       type: 'category',
       data: categories,
       name: categoryLabel,
-      labelOverflow: 'truncate',
-      labelWidth: 80,
+      // Box plots have few categories: show every label, wrapped.
+      labelOverflow: 'break',
+      labelWidth: 110,
+      showAllLabels: true,
       showSplitLine: horizontal ? showYAxisGrid : showXAxisGrid,
     },
     !horizontal,

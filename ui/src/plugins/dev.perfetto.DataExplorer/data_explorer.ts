@@ -36,6 +36,7 @@ import {
   importTab,
   loadGraphFromJson,
   loadGraphFromPath,
+  loadTabFromUrl,
   createDataExplorerGraph,
   type GraphIODeps,
 } from './graph_io';
@@ -66,6 +67,7 @@ import {
 } from './node_crud_operations';
 import {Dashboard} from './dashboard/dashboard';
 import {isDashboardNode} from './query_builder/nodes/dashboard_node';
+import {SqlSourceNode} from './query_builder/nodes/sources/sql_source';
 import {
   dashboardRegistry,
   type DashboardBrushFilter,
@@ -513,7 +515,16 @@ export class DataExplorer implements m.ClassComponent<DataExplorerAttrs> {
           const targetNode = allNodes.find((n) => n.nodeId === nodeId);
           if (targetNode === undefined) return Promise.resolve();
           return services.queryExecutionService
-            .processNode(targetNode, trace.engine, allNodes, {manual: true})
+            .processNode(targetNode, trace.engine, allNodes, {
+              manual: true,
+              // Like the graph view, let SQL sources learn their columns
+              // from the result; they are unknown until the query has run.
+              onExecutionSuccess: (result) => {
+                if (targetNode instanceof SqlSourceNode) {
+                  targetNode.onQueryExecuted(result.columns);
+                }
+              },
+            })
             .then(() => {});
         };
       }
@@ -732,6 +743,10 @@ export class DataExplorer implements m.ClassComponent<DataExplorerAttrs> {
         },
         onLoadExampleByPath: (jsonPath: string) =>
           loadGraphFromPath(graphIODeps, state, jsonPath, 'Failed to Load'),
+        onLoadTabByUrl: (url: string) =>
+          loadTabFromUrl(graphIODeps, url, (title, newState, dashboards) =>
+            attrs.onTabAddWithState(title, newState, tab.id, dashboards),
+          ),
         onLoadDataExplorerTemplate: async () => {
           if (!(await confirmAndFinalizeCurrentGraph(state))) return;
           await createDataExplorerGraph(graphIODeps);

@@ -264,6 +264,7 @@ export class ChartView implements m.ClassComponent<ChartViewAttrs> {
   ): m.Child {
     const ctx: ChartRenderContext = {
       node: attrs.node,
+      trace: attrs.trace,
       onFilterChange: attrs.onFilterChange,
     };
 

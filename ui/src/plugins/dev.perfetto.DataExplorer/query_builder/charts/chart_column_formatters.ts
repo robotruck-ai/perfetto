@@ -13,7 +13,9 @@
 // limitations under the License.
 
 import type {CellFormatter} from '../../../../components/widgets/datagrid/datagrid_schema';
-import {Duration} from '../../../../base/time';
+import {Duration, Time} from '../../../../base/time';
+import type {Trace} from '../../../../public/trace';
+import {TimestampFormat} from '../../../../public/timeline';
 import {
   underlyingSqlType,
   type PerfettoSqlType,
@@ -52,8 +54,12 @@ export function getColumnTypeKind(
 export function getNumericFormatter(
   node: ChartColumnProvider,
   columnName: string,
+  trace?: Trace,
 ): ((value: number) => string) | undefined {
   const kind = getColumnTypeKind(node, columnName);
+  if (kind === 'timestamp' && trace !== undefined) {
+    return (value: number) => formatTimestamp(trace, value);
+  }
   if (kind === 'timestamp' || kind === 'duration') {
     return (value: number) => Duration.humanise(BigInt(Math.round(value)));
   }
@@ -86,4 +92,34 @@ export function buildCellFormatters(
     }
   }
   return hasAny ? formatters : undefined;
+}
+
+/**
+ * Formats a trace timestamp the way the timeline does, following the user's
+ * timestamp format setting: e.g. wall-clock time of day for UTC or a custom
+ * timezone, or time since trace start for timecode.
+ */
+export function formatTimestamp(trace: Trace, value: number): string {
+  const ts = Time.fromRaw(BigInt(Math.round(value)));
+  const fmt = trace.timeline.timestampFormat;
+  switch (fmt) {
+    case TimestampFormat.UTC:
+    case TimestampFormat.TraceTz:
+    case TimestampFormat.CustomTimezone:
+    case TimestampFormat.Timecode: {
+      // Whole seconds (e.g. axis ticks) are shown without milliseconds.
+      const tc = Time.toTimecode(trace.timeline.toDomainTime(ts));
+      return tc.millis === '000' ? tc.dhhmmss : `${tc.dhhmmss}.${tc.millis}`;
+    }
+    case TimestampFormat.TraceNs:
+      return ts.toString();
+    case TimestampFormat.TraceNsLocale:
+      return ts.toLocaleString();
+    case TimestampFormat.Seconds:
+      return Time.formatSeconds(trace.timeline.toDomainTime(ts));
+    case TimestampFormat.Milliseconds:
+      return Time.formatMilliseconds(trace.timeline.toDomainTime(ts));
+    case TimestampFormat.Microseconds:
+      return Time.formatMicroseconds(trace.timeline.toDomainTime(ts));
+  }
 }

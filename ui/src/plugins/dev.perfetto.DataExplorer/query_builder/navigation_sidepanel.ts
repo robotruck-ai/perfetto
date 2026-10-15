@@ -18,6 +18,7 @@ import {Icon} from '../../../widgets/icon';
 import type {QueryNode} from '../query_node';
 import {EXAMPLE_GRAPHS} from '../example_graphs';
 import {RecentGraphsSection} from '../recent_graphs';
+import {builtinGraphUrl, getBuiltinGraphs} from '../builtin_graphs';
 
 // Helper function for keyboard-accessible card interactions
 function createKeyboardHandler(callback: () => void) {
@@ -97,6 +98,7 @@ export interface NavigationSidePanelAttrs {
   readonly selectedNode?: QueryNode;
   readonly onAddSourceNode: (id: string) => void;
   readonly onLoadExampleByPath?: (jsonPath: string) => void;
+  readonly onLoadTabByUrl?: (url: string) => void;
   readonly onLoadDataExplorerTemplate?: () => void;
   readonly onLoadEmptyTemplate?: () => void;
   readonly onLoadRecentGraph?: (json: string) => void;
@@ -128,6 +130,31 @@ export class NavigationSidePanel implements m.ClassComponent<NavigationSidePanel
           }),
         ),
       );
+
+      // Built-in tabs supplied by the hosting server (each opens a new tab)
+      const builtin = getBuiltinGraphs();
+      const onLoadTabByUrl = attrs.onLoadTabByUrl;
+      if (builtin !== undefined && onLoadTabByUrl !== undefined) {
+        results.push(
+          m(
+            '.pf-nav-section',
+            renderSectionHeader(builtin.title),
+            m(
+              CardStack,
+              {className: 'pf-nav-list'},
+              ...builtin.graphs.map((graph) =>
+                renderListItem({
+                  icon: graph.icon,
+                  title: graph.name,
+                  description: graph.description,
+                  ariaLabel: `Open ${graph.name}`,
+                  onClick: () => onLoadTabByUrl(builtinGraphUrl(graph)),
+                }),
+              ),
+            ),
+          ),
+        );
+      }
 
       // Tutorials section
       results.push(

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import m from 'mithril';
+import type {Trace} from '../../../../public/trace';
 import {
   type ChartConfig,
   type ChartType,
@@ -109,6 +110,8 @@ export interface ChartColumnProvider {
  */
 export interface ChartRenderContext {
   readonly node: ChartColumnProvider;
+  /** Used to format timestamp columns like the timeline does. */
+  readonly trace?: Trace;
   readonly onFilterChange?: () => void;
   /** When set, charts that support grid lines will render them. */
   readonly gridLines?: 'horizontal' | 'vertical' | 'both';
@@ -293,7 +296,7 @@ export function renderBarChart(
 
   const measureLabel = formatMeasureLabel(agg, config);
 
-  const dimFormatter = getNumericFormatter(ctx.node, config.column);
+  const dimFormatter = getNumericFormatter(ctx.node, config.column, ctx.trace);
   const formatDimension =
     dimFormatter !== undefined
       ? (v: string | number) => (typeof v === 'number' ? dimFormatter(v) : v)
@@ -301,7 +304,11 @@ export function renderBarChart(
 
   const needsMeasureFormatter = agg !== 'COUNT' && agg !== 'COUNT_DISTINCT';
   const formatMeasure = needsMeasureFormatter
-    ? getNumericFormatter(ctx.node, config.measureColumn ?? config.column)
+    ? getNumericFormatter(
+        ctx.node,
+        config.measureColumn ?? config.column,
+        ctx.trace,
+      )
     : undefined;
 
   return m(BarChart, {
@@ -333,7 +340,7 @@ export function renderHistogram(
     integer: isInteger,
   });
 
-  const formatXValue = getNumericFormatter(ctx.node, config.column);
+  const formatXValue = getNumericFormatter(ctx.node, config.column, ctx.trace);
 
   return m(Histogram, {
     data,
@@ -358,9 +365,9 @@ export function renderLineChart(
 
   const {data} = entry.lineLoader.use({});
 
-  const formatXValue = getNumericFormatter(ctx.node, config.column);
+  const formatXValue = getNumericFormatter(ctx.node, config.column, ctx.trace);
   const formatYValue = config.yColumn
-    ? getNumericFormatter(ctx.node, config.yColumn)
+    ? getNumericFormatter(ctx.node, config.yColumn, ctx.trace)
     : undefined;
 
   return m(LineChart, {
@@ -389,9 +396,9 @@ export function renderScatterChart(
 
   const {data} = entry.scatterLoader.use({maxPoints: 2000});
 
-  const formatXValue = getNumericFormatter(ctx.node, config.column);
+  const formatXValue = getNumericFormatter(ctx.node, config.column, ctx.trace);
   const formatYValue = config.yColumn
-    ? getNumericFormatter(ctx.node, config.yColumn)
+    ? getNumericFormatter(ctx.node, config.yColumn, ctx.trace)
     : undefined;
 
   return m(Scatterplot, {
@@ -421,7 +428,11 @@ export function renderPieChart(
 
   const formatValue =
     agg !== 'COUNT' && agg !== 'COUNT_DISTINCT'
-      ? getNumericFormatter(ctx.node, config.measureColumn ?? config.column)
+      ? getNumericFormatter(
+          ctx.node,
+          config.measureColumn ?? config.column,
+          ctx.trace,
+        )
       : undefined;
 
   return m(PieChart, {
@@ -452,6 +463,7 @@ export function renderTreemap(
   const formatValue = getNumericFormatter(
     ctx.node,
     config.measureColumn ?? config.column,
+    ctx.trace,
   );
 
   return m(Treemap, {
@@ -479,10 +491,13 @@ export function renderBoxplot(
     });
   }
 
-  const {data} = entry.boxplotLoader.use({limit: 30});
+  const {data} = entry.boxplotLoader.use({
+    limit: 30,
+    categoryOrder: config.categoryOrder,
+  });
 
   const formatValue = config.yColumn
-    ? getNumericFormatter(ctx.node, config.yColumn)
+    ? getNumericFormatter(ctx.node, config.yColumn, ctx.trace)
     : undefined;
 
   return m(BoxplotChart, {
@@ -534,7 +549,7 @@ export function renderCdf(
 
   const {data} = entry.cdfLoader.use({maxPoints: 500});
 
-  const formatXValue = getNumericFormatter(ctx.node, config.column);
+  const formatXValue = getNumericFormatter(ctx.node, config.column, ctx.trace);
 
   return m(LineChart, {
     data,
@@ -564,6 +579,7 @@ export function renderScorecard(
   const formatValue = getNumericFormatter(
     ctx.node,
     config.measureColumn ?? config.column,
+    ctx.trace,
   );
 
   return m(Scorecard, {

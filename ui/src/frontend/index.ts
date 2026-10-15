@@ -208,7 +208,8 @@ function main() {
     name: 'Timestamp format',
     description: 'The format of timestamps throughout Perfetto.',
     schema: z.enum(TimestampFormat),
-    defaultValue: TimestampFormat.Timecode,
+    // Default to wall-clock time in JST (see timezoneOverride below).
+    defaultValue: TimestampFormat.CustomTimezone,
   });
 
   const timezoneOverrideSetting = settingsManager.register({
@@ -217,7 +218,7 @@ function main() {
     description:
       "When 'Timestamp Format' is set to 'CustomTimezone', this setting controls which timezone is used.",
     schema: z.enum(Object.keys(timezoneOffsetMap) as [string, ...string[]]),
-    defaultValue: '(UTC+00:00) London, Dublin, Lisbon, Casablanca', // UTC by default.
+    defaultValue: '(UTC+09:00) Tokyo, Seoul, Osaka, Sapporo', // JST by default.
   });
 
   const durationPrecisionSetting = settingsManager.register({
