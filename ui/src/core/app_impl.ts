@@ -226,6 +226,10 @@ export class AppImpl implements App {
     return this.openTrace({type: 'URL', url, serializedAppState});
   }
 
+  openTraceFromS3(uri: string) {
+    return this.openTrace({type: 'S3', uri});
+  }
+
   openTraceFromStream(stream: TraceStream) {
     return this.openTrace({type: 'STREAM', stream});
   }

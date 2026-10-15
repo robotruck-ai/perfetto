@@ -213,6 +213,21 @@ class Hints implements m.ClassComponent {
                 m('.pf-home-page__item-title', 'Record new trace'),
               ),
             ),
+            m(
+              '.pf-home-page__item',
+              {
+                onclick: () => {
+                  AppImpl.instance.commands.runCommand(
+                    'dev.perfetto.OpenS3Trace',
+                  );
+                },
+              },
+              m(Icon, {icon: 'cloud', className: 'pf-left-icon'}),
+              m(
+                '.pf-home-page__item-info',
+                m('.pf-home-page__item-title', 'Open S3 trace'),
+              ),
+            ),
           ),
         ),
       ),

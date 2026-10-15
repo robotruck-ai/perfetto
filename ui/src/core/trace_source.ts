@@ -24,6 +24,7 @@ export type TraceSource = CommonTraceProps &
     | TraceFileSource
     | TraceArrayBufferSource
     | TraceUrlSource
+    | TraceS3Source
     | TraceHttpRpcSource
     | TraceMultipleFilesSource
     | TraceStreamSource
@@ -42,6 +43,11 @@ export interface TraceMultipleFilesSource {
 export interface TraceUrlSource {
   readonly type: 'URL';
   readonly url: string;
+}
+
+export interface TraceS3Source {
+  readonly type: 'S3';
+  readonly uri: string;
 }
 
 export interface TraceStreamSource {

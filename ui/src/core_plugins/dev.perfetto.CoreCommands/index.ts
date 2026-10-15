@@ -26,6 +26,7 @@ import {JsonSettingsEditor} from '../../components/json_settings_editor';
 import QueryPagePlugin from '../../plugins/dev.perfetto.QueryPage';
 import {AppImpl} from '../../core/app_impl';
 import {openTraceFiles} from '../../core/open_trace_files';
+import {Router} from '../../core/router';
 import {macroSchema} from '../../core/command_manager';
 import {featureFlags} from '../../core/feature_flags';
 import {OmniboxMode} from '../../core/omnibox_manager';
@@ -329,6 +330,32 @@ export default class CoreCommands implements PerfettoPlugin {
       section: 'trace_files',
       icon: 'folder_open',
       sortOrder: 1,
+    });
+
+    const OPEN_S3_TRACE_COMMAND_ID = 'dev.perfetto.OpenS3Trace';
+    ctx.commands.registerCommand({
+      id: OPEN_S3_TRACE_COMMAND_ID,
+      name: 'Open S3 trace',
+      callback: async () => {
+        const uri = await ctx.omnibox.prompt(
+          'S3 trace URI (s3://bucket/key.pftrace)',
+        );
+        if (uri === undefined) return;
+        if (!/^s3:\/\/[^/?#]+\/[^?#]+$/.test(uri)) {
+          showModal({
+            title: 'Invalid S3 URI',
+            content: m('p', 'Enter an S3 URI such as s3://bucket/key.pftrace.'),
+          });
+          return;
+        }
+        Router.navigate(`#!/viewer?s3=${encodeURIComponent(uri)}`);
+      },
+    });
+    ctx.sidebar.addMenuItem({
+      commandId: OPEN_S3_TRACE_COMMAND_ID,
+      section: 'trace_files',
+      icon: 'cloud',
+      sortOrder: 2,
     });
 
     ctx.commands.registerCommand({
