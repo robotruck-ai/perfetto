@@ -53,6 +53,7 @@ import {
 } from './dashboard_chart_view';
 import {DashboardSelectView} from './dashboard_select_view';
 import {DashboardRepeatView} from './dashboard_repeat_view';
+import {pendingRequiredSelect} from './required_selects';
 import {ResizeHandle} from '../../../widgets/resize_handle';
 import {Card} from '../../../widgets/card';
 import {
@@ -151,6 +152,8 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
   private brushClearGen = 0;
   // Row spans of repeat items, which grow to fit their content.
   private readonly repeatRowSpans = new Map<string, number>();
+  // Chart sources whose execution this dashboard requested, until it ends.
+  private readonly requestedSources = new Set<string>();
 
   // Grid measurement — updated via ResizeObserver on the canvas element.
   private canvasWidth = 1200;
@@ -573,6 +576,7 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
     attrs: DashboardAttrs,
     items: DashboardItem[],
   ): m.Children {
+    this.requestChartSourcesInOrder(attrs, items);
     return items.map((item) => {
       if (item.kind === 'label') {
         return this.renderLabel(attrs, item);
@@ -592,6 +596,36 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
       }
       return this.renderChart(attrs, source, item);
     });
+  }
+
+  // Each chart view requests its source when it is created, but charts that
+  // appear together (e.g. once a required dropdown has a value) are created
+  // bottom-up, so their sources would be computed bottom-up too. Requesting
+  // them here first, in item order, fills the dashboard in from the top.
+  private requestChartSourcesInOrder(
+    attrs: DashboardAttrs,
+    items: ReadonlyArray<DashboardItem>,
+  ): void {
+    for (const item of items) {
+      if (item.kind !== 'chart') continue;
+      const source = attrs.sources.find((s) => s.nodeId === item.sourceNodeId);
+      if (
+        source?.requestExecution === undefined ||
+        (source.tableName !== undefined && source.columns.length > 0) ||
+        this.requestedSources.has(source.nodeId) ||
+        pendingRequiredSelect(items, attrs.sources, attrs.brushFilters, [
+          source.nodeId,
+        ]) !== undefined
+      ) {
+        continue;
+      }
+      const nodeId = source.nodeId;
+      this.requestedSources.add(nodeId);
+      source
+        .requestExecution()
+        .catch((e) => console.debug('Dashboard source execution failed:', e))
+        .finally(() => this.requestedSources.delete(nodeId));
+    }
   }
 
   private renderChart(
@@ -691,22 +725,42 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
       ]),
       m(
         '.pf-dashboard__chart-content',
-        m(DashboardChartView, {
-          key: `${config.id}-${this.brushClearGen}`,
-          trace: attrs.trace,
-          source,
-          config,
-          dashboardId: attrs.dashboardId,
-          items: attrs.items,
-          allSources: attrs.sources,
-          brushFilters: attrs.brushFilters,
-          onItemsChange: attrs.onItemsChange,
-          onBrushFiltersChange: attrs.onBrushFiltersChange,
-          isDriverChart: chartIsDriver,
-          gridLines: this.settings.chartGridLines,
-        }),
+        this.renderWaitingForSelect(attrs, [source.nodeId]) ??
+          m(DashboardChartView, {
+            key: `${config.id}-${this.brushClearGen}`,
+            trace: attrs.trace,
+            source,
+            config,
+            dashboardId: attrs.dashboardId,
+            items: attrs.items,
+            allSources: attrs.sources,
+            brushFilters: attrs.brushFilters,
+            onItemsChange: attrs.onItemsChange,
+            onBrushFiltersChange: attrs.onBrushFiltersChange,
+            isDriverChart: chartIsDriver,
+            gridLines: this.settings.chartGridLines,
+          }),
       ),
     ]);
+  }
+
+  // A placeholder while a required dropdown filtering these sources has no
+  // value yet; undefined once the charts can load.
+  private renderWaitingForSelect(
+    attrs: DashboardAttrs,
+    sourceNodeIds: ReadonlyArray<string>,
+  ): m.Child | undefined {
+    const select = pendingRequiredSelect(
+      attrs.items,
+      attrs.sources,
+      attrs.brushFilters,
+      sourceNodeIds,
+    );
+    if (select === undefined) return undefined;
+    return m(
+      '.pf-dashboard__select-status',
+      `Waiting for a ${select.label ?? select.column} to be selected…`,
+    );
   }
 
   private renderOrphanedChart(
@@ -841,6 +895,17 @@ export class Dashboard implements m.ClassComponent<DashboardAttrs> {
     repeat: DashboardItem & {kind: 'repeat'},
   ): m.Child {
     const itemId = repeat.id;
+    const repeatSources = repeat.sections.flatMap((section) => [
+      section.sourceNodeId,
+      ...section.charts.map((c) => c.sourceNodeId),
+    ]);
+    const waiting = this.renderWaitingForSelect(attrs, repeatSources);
+    if (waiting !== undefined) {
+      return this.renderItemCard(attrs, itemId, repeat, [
+        m('.pf-dashboard__label-delete', this.deleteButton(attrs, itemId)),
+        waiting,
+      ]);
+    }
     return this.renderItemCard(attrs, itemId, repeat, [
       m('.pf-dashboard__label-delete', this.deleteButton(attrs, itemId)),
       m(DashboardRepeatView, {
