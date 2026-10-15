@@ -21,7 +21,7 @@ import {isMetatracingEnabled} from '../../core/metatracing';
 import {raf} from '../../core/raf_scheduler';
 import type {SidebarMenuItemInternal} from '../../core/sidebar_manager';
 import type {TraceImpl} from '../../core/trace_impl';
-import {SCM_REVISION, VERSION} from '../../virtual/version';
+import {SCM_REVISION, VERSION, VERSION_LABEL} from '../../virtual/version';
 import type {App} from '../../public/app';
 import {SIDEBAR_SECTIONS, type SidebarSections} from '../../public/sidebar';
 import {getBugReportUrl} from '../../public/utils';
@@ -129,10 +129,13 @@ export class Sidebar implements m.ClassComponent<SidebarAttrs> {
           'a',
           {
             href: `${GITILES_URL}/tree/${SCM_REVISION}/ui`,
-            title: `Channel: ${getCurrentChannel()}`,
+            title:
+              VERSION_LABEL === VERSION
+                ? `Channel: ${getCurrentChannel()}`
+                : `Perfetto ${VERSION}\nChannel: ${getCurrentChannel()}`,
             target: '_blank',
           },
-          VERSION,
+          VERSION_LABEL,
         ),
       ),
     );

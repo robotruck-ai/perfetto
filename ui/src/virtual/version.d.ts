@@ -18,4 +18,7 @@
 // file — the synth plugin would still win, but it'd be confusing.
 
 export const VERSION: string;
+// The version shown to users: VERSION, unless the build sets its own label
+// (PERFETTO_UI_VERSION_LABEL).
+export const VERSION_LABEL: string;
 export const SCM_REVISION: string;
