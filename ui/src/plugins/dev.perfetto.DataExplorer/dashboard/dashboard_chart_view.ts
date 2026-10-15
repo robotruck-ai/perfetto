@@ -243,6 +243,10 @@ export class DashboardChartView implements m.ClassComponent<DashboardChartViewAt
   private executionRequested = false;
   private cachedAdapter?: DashboardChartAdapter;
   private adapterSourceNodeId?: string;
+  // The adapter snapshots the source's columns, so it is rebuilt whenever
+  // the source is republished (e.g. once a SQL source has run and its
+  // columns and their types are known).
+  private adapterSource?: DashboardDataSource;
   private adapterConfigId?: string;
 
   onremove() {
@@ -256,6 +260,7 @@ export class DashboardChartView implements m.ClassComponent<DashboardChartViewAt
     // Re-create the adapter only when the source or config identity changes.
     if (
       this.cachedAdapter === undefined ||
+      this.adapterSource !== attrs.source ||
       this.adapterSourceNodeId !== attrs.source.nodeId ||
       this.adapterConfigId !== attrs.config.id
     ) {
@@ -264,6 +269,7 @@ export class DashboardChartView implements m.ClassComponent<DashboardChartViewAt
         attrs,
         attrs.config,
       );
+      this.adapterSource = attrs.source;
       this.adapterSourceNodeId = attrs.source.nodeId;
       this.adapterConfigId = attrs.config.id;
     } else {
@@ -285,11 +291,14 @@ export class DashboardChartView implements m.ClassComponent<DashboardChartViewAt
       });
     }
 
-    // Validate that the configured column exists in the current source.
+    // Sources whose schema is only known after execution (e.g. SQL sources)
+    // report no columns until they have run, so execute them before
+    // validating the column.
+    const columnsKnown = attrs.source.columns.length > 0;
     const columnExists = attrs.source.columns.some(
       (c) => c.name === config.column,
     );
-    if (!columnExists) {
+    if (columnsKnown && !columnExists) {
       return m(
         ResultsPanelEmptyState,
         {icon: 'warning', title: 'Invalid column'},
@@ -297,8 +306,8 @@ export class DashboardChartView implements m.ClassComponent<DashboardChartViewAt
       );
     }
 
-    // If the table name isn't available yet, trigger execution once and wait.
-    if (attrs.source.tableName === undefined) {
+    // If the source hasn't run yet, trigger execution once and wait.
+    if (attrs.source.tableName === undefined || !columnsKnown) {
       if (!this.executionRequested && attrs.source.requestExecution) {
         this.executionRequested = true;
         attrs.source
@@ -317,6 +326,7 @@ export class DashboardChartView implements m.ClassComponent<DashboardChartViewAt
     const entry = this.ensureLoader(attrs, config);
     const ctx = {
       node: adapter,
+      trace: attrs.trace,
       onFilterChange: () => m.redraw(),
       gridLines: attrs.gridLines,
     };
@@ -378,7 +388,7 @@ export class DashboardChartView implements m.ClassComponent<DashboardChartViewAt
  * Same-column '=' filters are combined with OR (IN clause).
  * Range filters and cross-column conditions are combined with AND.
  */
-function buildWhereClause(
+export function buildWhereClause(
   filters: ReadonlyArray<DashboardBrushFilter>,
 ): string {
   if (filters.length === 0) return '';

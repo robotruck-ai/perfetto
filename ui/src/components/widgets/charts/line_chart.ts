@@ -316,7 +316,8 @@ function buildLineOption(
       ) => {
         if (!Array.isArray(params) || params.length === 0) return '';
         const xVal = params[0].data?.[0];
-        const header = xVal !== undefined ? `X: ${fmtX(xVal)}` : '';
+        const header =
+          xVal !== undefined ? `${xAxisLabel ?? 'X'}: ${fmtX(xVal)}` : '';
         const lines = params.map(
           (p) =>
             `${p.marker ?? ''} ${p.seriesName ?? ''}: ${fmtY(p.data?.[1] ?? 0)}`,

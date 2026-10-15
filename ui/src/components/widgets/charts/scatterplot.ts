@@ -320,8 +320,8 @@ function buildScatterOption(
         const [x, y, size, label] = value;
         const lines = [
           `${params.marker ?? ''} ${params.seriesName ?? ''}`,
-          `X: ${fmtX(x)}`,
-          `Y: ${fmtY(y)}`,
+          `${xAxisLabel ?? 'X'}: ${fmtX(x)}`,
+          `${yAxisLabel ?? 'Y'}: ${fmtY(y)}`,
         ];
         if (size !== undefined && size !== null) {
           lines.push(`Size: ${formatNumber(size)}`);

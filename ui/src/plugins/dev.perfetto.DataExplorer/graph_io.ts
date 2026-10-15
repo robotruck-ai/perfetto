@@ -16,12 +16,15 @@ import m from 'mithril';
 import {assetSrc} from '../../base/assets';
 import {showModal} from '../../widgets/modal';
 import type {Trace} from '../../public/trace';
-import type {QueryNode} from './query_node';
+import {NodeType, nextNodeId, type QueryNode} from './query_node';
+import {shortUuid} from '../../base/uuid';
+import {getAllNodes} from './query_builder/graph_utils';
 import {
   serializeState,
   exportStateAsJson,
   deserializeState,
   downloadJsonFile,
+  type SerializedGraph,
 } from './json_handler';
 import {nodeRegistry} from './query_builder/node_registry';
 import {SlicesSourceNode} from './query_builder/nodes/sources/slices_source';
@@ -449,4 +452,160 @@ export function importTab(
     reader.readAsText(file);
   };
   input.click();
+}
+
+// Node-reference fields kept inside node state by older graph formats.
+const LEGACY_STATE_NODE_REFS = [
+  'primaryInputId',
+  'secondaryInputNodeId',
+  'secondaryInputNodeIds',
+  'leftNodeId',
+  'rightNodeId',
+  'intervalNodes',
+  'inputNodeIds',
+];
+
+// Gives every node of a serialized graph a fresh ID and rewrites all
+// references to it, including from the dashboards. Exported dashboard
+// sources are registered globally by node ID, so a tab opened twice must not
+// reuse the IDs of the first copy.
+function withFreshNodeIds(
+  graphJson: string,
+  dashboards: SerializedDashboard[] | undefined,
+): {graph: string; dashboards?: SerializedDashboard[]} {
+  const graph = JSON.parse(graphJson) as SerializedGraph;
+  const ids = new Map(graph.nodes.map((n) => [n.nodeId, nextNodeId()]));
+  const id = (old: string) => ids.get(old) ?? old;
+  const remap = (value: unknown): unknown => {
+    if (typeof value === 'string') return id(value);
+    if (Array.isArray(value)) return value.map(remap);
+    return value;
+  };
+
+  const nodes = graph.nodes.map((node) => {
+    const state = {...(node.state as Record<string, unknown>)};
+    for (const key of LEGACY_STATE_NODE_REFS) {
+      if (key in state) state[key] = remap(state[key]);
+    }
+    const secondary =
+      node.secondaryInputIds === undefined
+        ? undefined
+        : Object.fromEntries(
+            Object.entries(node.secondaryInputIds).map(([port, ref]) => [
+              port,
+              id(ref),
+            ]),
+          );
+    return {
+      ...node,
+      nodeId: id(node.nodeId),
+      state,
+      nextNodes: node.nextNodes.map(id),
+      primaryInputId:
+        node.primaryInputId === undefined ? undefined : id(node.primaryInputId),
+      secondaryInputIds: secondary,
+      innerNodeIds: node.innerNodeIds?.map(id),
+      inputNodeIds: node.inputNodeIds?.map(id),
+    };
+  });
+  const layouts =
+    graph.nodeLayouts === undefined
+      ? undefined
+      : Object.fromEntries(
+          Object.entries(graph.nodeLayouts).map(([ref, pos]) => [id(ref), pos]),
+        );
+  const newGraph: SerializedGraph = {
+    ...graph,
+    nodes,
+    rootNodeIds: graph.rootNodeIds.map(id),
+    nodeLayouts: layouts,
+    selectedNodeId:
+      graph.selectedNodeId === undefined ? undefined : id(graph.selectedNodeId),
+  };
+
+  // Dashboard items reference sources by `sourceNodeId`, also nested (e.g.
+  // the sections and charts of a repeat item).
+  const remapSources = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(remapSources);
+    if (typeof value !== 'object' || value === null) return value;
+    return Object.fromEntries(
+      Object.entries(value).map(([key, v]) => [
+        key,
+        key === 'sourceNodeId' && typeof v === 'string'
+          ? id(v)
+          : remapSources(v),
+      ]),
+    );
+  };
+  const newDashboards = dashboards?.map((db) => ({
+    ...db,
+    id: shortUuid(),
+    items: db.items?.map(remapSources),
+    brushFilters:
+      db.brushFilters === undefined
+        ? undefined
+        : Object.fromEntries(
+            Object.entries(db.brushFilters).map(([ref, filters]) => [
+              id(ref),
+              filters,
+            ]),
+          ),
+  }));
+  return {graph: JSON.stringify(newGraph), dashboards: newDashboards};
+}
+
+// Loads a whole-tab export (graph plus dashboards) from a URL and opens it in
+// a new tab. Plain graph JSON is accepted as well.
+export async function loadTabFromUrl(
+  deps: GraphIODeps,
+  url: string,
+  onCreateTab: (
+    title: string,
+    state: DataExplorerState,
+    dashboards?: DashboardTabState[],
+  ) => void,
+): Promise<void> {
+  try {
+    const response = await fetch(url, {cache: 'no-cache'});
+    if (!response.ok) {
+      throw new Error(
+        `Failed to load: ${response.status} ${response.statusText}`,
+      );
+    }
+    const text = await response.text();
+    const parsed: unknown = JSON.parse(text);
+    const tabExport = isSerializedTabExport(parsed) ? parsed : undefined;
+    const fresh = withFreshNodeIds(
+      tabExport?.graph ?? text,
+      tabExport?.dashboards,
+    );
+    const newState = deserializeState(fresh.graph, deps.trace, deps.sqlModules);
+    // These tabs are prepared analyses meant to show results on open, so
+    // their SQL sources run without waiting for a manual "Run Query".
+    for (const node of getAllNodes(newState.rootNodes)) {
+      if (node.type === NodeType.kSqlSource) {
+        node.context.autoExecute = true;
+      }
+    }
+    if (tabExport !== undefined) {
+      const dashboards = deserializeDashboardsFromExport(fresh.dashboards);
+      onCreateTab(tabExport.title, newState, dashboards);
+    } else {
+      const name = new URL(url, self.location.href).pathname
+        .replace(/^.*\//, '')
+        .replace(/\.json$/i, '');
+      onCreateTab(name, newState);
+    }
+  } catch (error) {
+    console.error(`Failed to load from ${url}:`, error);
+    showModal({
+      title: 'Failed to Load',
+      content: () =>
+        m(
+          'div',
+          `An error occurred while loading: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      buttons: [],
+    });
+  }
 }

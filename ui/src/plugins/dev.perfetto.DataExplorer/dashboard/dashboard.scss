@@ -272,6 +272,94 @@
   }
 }
 
+// Dropdown filter card: label, search box and actions on one row, vertically
+// centered so the card can be as short as a toolbar.
+.pf-dashboard__select-row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px 0 14px;
+}
+
+.pf-dashboard__select-label {
+  flex: none;
+  font-weight: 600;
+}
+
+.pf-dashboard__select-input {
+  flex: 1;
+  min-width: 0;
+  max-width: 560px;
+  cursor: default;
+}
+
+.pf-dashboard__select {
+  width: 100%;
+}
+
+.pf-dashboard__select-status {
+  color: var(--pf-color-text-muted);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  &--error {
+    color: var(--pf-color-danger);
+  }
+}
+
+// Repeat item: one group of charts per value. The content keeps its natural
+// height (the card is resized to fit it), so it must not flex.
+.pf-dashboard__repeat {
+  flex: none;
+  padding: 12px 14px;
+  cursor: default;
+}
+
+.pf-dashboard__repeat-section + .pf-dashboard__repeat-section {
+  margin-top: 20px;
+}
+
+.pf-dashboard__repeat-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.pf-dashboard__repeat-group {
+  border-top: 1px solid var(--pf-color-border-secondary);
+  padding: 8px 0 12px;
+}
+
+.pf-dashboard__repeat-group-title {
+  font-family: var(--pf-font-monospace, monospace);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.pf-dashboard__repeat-group-charts {
+  display: grid;
+  gap: 10px;
+}
+
+.pf-dashboard__repeat-chart {
+  height: 240px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--pf-color-border);
+  border-radius: 4px;
+}
+
+.pf-dashboard__repeat-chart-title {
+  padding: 6px 8px 0;
+  font-size: 12px;
+  color: var(--pf-color-text-muted);
+}
+
 // Label delete button — appears on hover in the top-right corner.
 .pf-dashboard__label-delete {
   position: absolute;

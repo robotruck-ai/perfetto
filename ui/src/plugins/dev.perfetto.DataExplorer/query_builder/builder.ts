@@ -171,6 +171,7 @@ export interface BuilderAttrs {
   // Starting templates (when page is empty)
   readonly onLoadEmptyTemplate?: () => void;
   readonly onLoadExampleByPath?: (jsonPath: string) => void;
+  readonly onLoadTabByUrl?: (url: string) => void;
   readonly onLoadDataExplorerTemplate?: () => void;
   readonly onLoadRecentGraph?: (json: string) => void;
 
@@ -384,6 +385,7 @@ export class Builder implements m.ClassComponent<BuilderAttrs> {
               selectedNode,
               onAddSourceNode: attrs.graphCallbacks.onAddSourceNode,
               onLoadExampleByPath: attrs.onLoadExampleByPath,
+              onLoadTabByUrl: attrs.onLoadTabByUrl,
               onLoadDataExplorerTemplate: attrs.onLoadDataExplorerTemplate,
               onLoadEmptyTemplate: attrs.onLoadEmptyTemplate,
               onLoadRecentGraph: attrs.onLoadRecentGraph,

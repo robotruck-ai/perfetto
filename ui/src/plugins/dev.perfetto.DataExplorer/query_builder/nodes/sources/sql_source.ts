@@ -28,6 +28,10 @@ import {
   type SqlDependency,
 } from '../../structured_query_builder';
 import type {ColumnInfo} from '../../column_info';
+import {
+  type PerfettoSqlType,
+  PerfettoSqlTypes,
+} from '../../../../../trace_processor/perfetto_sql_type';
 import {setValidationError} from '../../node_issues';
 import type {NodeDetailsAttrs} from '../../../node_types';
 import {loadNodeDoc} from '../../node_doc_loader';
@@ -162,7 +166,11 @@ export class SqlSourceNode implements QueryNode {
   }
 
   setSourceColumns(columns: string[]) {
-    this.finalCols = columns.map((c) => ({name: c, checked: true}));
+    this.finalCols = columns.map((c) => ({
+      name: c,
+      checked: true,
+      type: conventionalColumnType(c),
+    }));
     m.redraw();
   }
 
@@ -290,4 +298,13 @@ export class SqlSourceNode implements QueryNode {
     }
     return dependencies;
   }
+}
+
+// SQL results carry no column types. Follow the PerfettoSQL convention that
+// `ts` columns are timestamps and `dur` columns durations, so that results
+// and charts format them as such.
+function conventionalColumnType(name: string): PerfettoSqlType | undefined {
+  if (name === 'ts' || name.endsWith('_ts')) return PerfettoSqlTypes.TIMESTAMP;
+  if (name === 'dur' || name.endsWith('_dur')) return PerfettoSqlTypes.DURATION;
+  return undefined;
 }

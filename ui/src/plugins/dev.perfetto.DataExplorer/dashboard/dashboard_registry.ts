@@ -40,6 +40,8 @@ export const DEFAULT_COL_SPAN = 8;
 export const DEFAULT_ROW_SPAN = 6;
 export const MIN_COL_SPAN = 4;
 export const MIN_ROW_SPAN = 4;
+// Row span of dropdown filter items, which only hold a single input row.
+export const SELECT_ROW_SPAN = 2;
 // Row span for divider items (must match inline style in dashboard.ts).
 export const DIVIDER_ROW_SPAN = 0;
 // Visual margin (in grid cells) from the canvas edges.
@@ -79,10 +81,64 @@ export interface DashboardDivider {
   label?: string;
 }
 
-/** A dashboard canvas item — a chart, label, or segment divider. */
+/**
+ * A dropdown that filters the dashboard by one column of a data source.
+ * Choosing a value sets an '=' brush filter on that column for every source
+ * that has a column with the same name, exactly like brushing a chart. With
+ * `required` there is no "All" option and the first value is selected
+ * automatically, so the charts never show all values mixed together.
+ */
+export interface DashboardSelect {
+  readonly id: string;
+  readonly sourceNodeId: string;
+  column: string;
+  label?: string;
+  required?: boolean;
+  col?: number;
+  row?: number;
+  colSpan?: number;
+  rowSpan?: number;
+}
+
+/** A chart template repeated once per value of a DashboardRepeatSection. */
+export interface DashboardRepeatChart {
+  readonly sourceNodeId: string;
+  readonly config: ChartConfig;
+}
+
+/**
+ * One section of a DashboardRepeat: the distinct values of `column` in a
+ * source (after the dashboard's filters on that source) each get a group of
+ * charts showing only that value.
+ */
+export interface DashboardRepeatSection {
+  readonly title: string;
+  readonly sourceNodeId: string;
+  readonly column: string;
+  readonly charts: ReadonlyArray<DashboardRepeatChart>;
+}
+
+/**
+ * Small multiples: repeats a group of charts for every value of a column, so
+ * that values which must not be mixed (e.g. one group per channel) are each
+ * shown on their own. The item grows to fit its groups; place it below all
+ * other items.
+ */
+export interface DashboardRepeat {
+  readonly id: string;
+  readonly sections: ReadonlyArray<DashboardRepeatSection>;
+  col?: number;
+  row?: number;
+  colSpan?: number;
+  rowSpan?: number;
+}
+
+/** A dashboard canvas item — a chart, label, dropdown or segment divider. */
 export type DashboardItem =
   | ({readonly kind: 'chart'} & DashboardChart)
   | ({readonly kind: 'label'} & DashboardLabel)
+  | ({readonly kind: 'select'} & DashboardSelect)
+  | ({readonly kind: 'repeat'} & DashboardRepeat)
   | ({readonly kind: 'divider'} & DashboardDivider);
 
 /** Get the unique ID for a dashboard item. */
@@ -361,6 +417,29 @@ export function validateDashboardItems(
       validated.push(item as DashboardItem);
     } else if (obj.kind === 'label') {
       if (typeof obj.id !== 'string' || typeof obj.text !== 'string') continue;
+      validated.push(item as DashboardItem);
+    } else if (obj.kind === 'select') {
+      if (
+        typeof obj.id !== 'string' ||
+        typeof obj.sourceNodeId !== 'string' ||
+        typeof obj.column !== 'string'
+      ) {
+        continue;
+      }
+      validated.push(item as DashboardItem);
+    } else if (obj.kind === 'repeat') {
+      if (typeof obj.id !== 'string' || !Array.isArray(obj.sections)) continue;
+      const sectionsValid = obj.sections.every((s: unknown) => {
+        const sec = s as Record<string, unknown> | null;
+        return (
+          sec !== null &&
+          typeof sec === 'object' &&
+          typeof sec.sourceNodeId === 'string' &&
+          typeof sec.column === 'string' &&
+          Array.isArray(sec.charts)
+        );
+      });
+      if (!sectionsValid) continue;
       validated.push(item as DashboardItem);
     } else if (obj.kind === 'divider') {
       if (typeof obj.id !== 'string' || typeof obj.row !== 'number') continue;

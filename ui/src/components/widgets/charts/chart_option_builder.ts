@@ -39,8 +39,13 @@ export interface AxisConfig {
   readonly min?: number;
   readonly max?: number;
   readonly formatter?: (v: number | string) => string;
-  readonly labelOverflow?: 'truncate';
+  readonly labelOverflow?: 'truncate' | 'break';
   readonly labelWidth?: number;
+  /**
+   * Show every category label instead of letting ECharts skip some when
+   * they would collide. Use with few categories and `labelOverflow: 'break'`.
+   */
+  readonly showAllLabels?: boolean;
   readonly showSplitLine?: boolean;
   /**
    * When true, axis range is computed from data min/max instead of
@@ -79,6 +84,10 @@ export function buildAxisOption(
     nameTextStyle: {fontSize: 11},
     axisLabel: {
       fontSize: AXIS_LABEL_FONT_SIZE,
+      // Drop tick labels that would overlap (e.g. long time-of-day labels on
+      // narrow charts) instead of drawing them on top of each other.
+      hideOverlap: config.showAllLabels !== true,
+      ...(config.showAllLabels === true && {interval: 0}),
       ...(config.formatter !== undefined && {formatter: config.formatter}),
       ...(config.labelOverflow !== undefined && {
         overflow: config.labelOverflow,
