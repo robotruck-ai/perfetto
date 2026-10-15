@@ -358,13 +358,13 @@ export class StructuredQueryBuilder {
 
   /**
    * Creates a simple reference query.
-   * This is a private helper method used by multi-input operations.
+   * Used by multi-input operations and SQL source dependencies.
    *
    * @param innerQueryId The ID of the query to reference
    * @param refId The ID for this reference query
    * @returns A new structured query referencing the inner query
    */
-  private static createRef(
+  static createRef(
     innerQueryId: string,
     refId: string,
   ): protos.PerfettoSqlStructuredQuery {

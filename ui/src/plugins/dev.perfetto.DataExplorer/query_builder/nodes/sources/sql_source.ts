@@ -40,6 +40,19 @@ import {NodeTitle} from '../../node_styling_widgets';
 // Serializable node configuration.
 export interface SqlSourceNodeAttrs {
   sql?: string;
+  // Columns returned by the SQL, as discovered by its last execution. Saved
+  // with the node so that its structured query (which lists them) is the same
+  // before and after the first execution: otherwise discovering the columns
+  // changes the query, and the summarizer materializes it a second time.
+  columns?: string[];
+}
+
+function toColumnInfos(columns: string[]): ColumnInfo[] {
+  return columns.map((c) => ({
+    name: c,
+    checked: true,
+    type: conventionalColumnType(c),
+  }));
 }
 
 interface SqlEditorAttrs {
@@ -150,7 +163,7 @@ export class SqlSourceNode implements QueryNode {
       // SQL source nodes require manual execution since users write SQL
       autoExecute: context.autoExecute ?? false,
     };
-    this.finalCols = [];
+    this.finalCols = toColumnInfos(attrs.columns ?? []);
     this.nextNodes = [];
     // Support unbounded number of input nodes that can be referenced as $input_0, $input_1, etc.
     this.secondaryInputs = {
@@ -166,11 +179,8 @@ export class SqlSourceNode implements QueryNode {
   }
 
   setSourceColumns(columns: string[]) {
-    this.finalCols = columns.map((c) => ({
-      name: c,
-      checked: true,
-      type: conventionalColumnType(c),
-    }));
+    this.finalCols = toColumnInfos(columns);
+    this.attrs.columns = [...columns];
     m.redraw();
   }
 
@@ -192,7 +202,10 @@ export class SqlSourceNode implements QueryNode {
   }
 
   clone(): QueryNode {
-    return new SqlSourceNode({sql: this.attrs.sql}, this.context);
+    return new SqlSourceNode(
+      {sql: this.attrs.sql, columns: this.attrs.columns},
+      this.context,
+    );
   }
 
   validate(): boolean {
@@ -236,9 +249,16 @@ export class SqlSourceNode implements QueryNode {
         // If any input is invalid, the query cannot be built
         return undefined;
       }
+      // Reference the input by id rather than embedding its query, like the
+      // multi-input operations do: the summarizer then materializes the input
+      // once and reuses its table, instead of re-running its SQL inside every
+      // SQL source that reads it.
       dependencies.push({
         alias: `input_${portIndex}`,
-        query: inputQuery,
+        query: StructuredQueryBuilder.createRef(
+          inputQuery.id ?? inputNode.nodeId,
+          `${this.nodeId}_input_${portIndex}_ref`,
+        ),
       });
     }
 
@@ -268,6 +288,7 @@ export class SqlSourceNode implements QueryNode {
         this.attrs.sql = text;
         // Clear columns when SQL changes to prevent stale column usage
         this.finalCols = [];
+        this.attrs.columns = undefined;
         // Notify that the query has changed so stale results are cleared
         this.context.onchange?.();
         m.redraw();
@@ -276,6 +297,7 @@ export class SqlSourceNode implements QueryNode {
         this.attrs.sql = text.trim();
         // Clear columns when SQL changes to prevent stale column usage
         this.finalCols = [];
+        this.attrs.columns = undefined;
         // Notify that the query has changed so stale results are cleared
         this.context.onchange?.();
         m.redraw();
