@@ -14,6 +14,7 @@
 
 import {
   ChartSource,
+  notNullFilters,
   type ColumnSchema,
   type QueryConfig,
 } from './chart_sql_source';
@@ -290,6 +291,19 @@ test('points: with breakdown (series)', () => {
   const norm = normalizeWhitespace(sql);
   expect(norm).toContain('CAST(cpu AS TEXT) AS _series');
   expect(norm).toContain('ORDER BY _series ASC, _x ASC');
+});
+
+test('points: skips rows without both coordinates', () => {
+  const sql = build({
+    type: 'points',
+    columns: [
+      {column: 'ts', alias: '_x', cast: 'real'},
+      {column: 'dur', alias: '_y', cast: 'real'},
+    ],
+    filters: notNullFilters('ts', 'dur'),
+  });
+  const norm = normalizeWhitespace(sql);
+  expect(norm).toContain('WHERE (ts IS NOT NULL) AND (dur IS NOT NULL)');
 });
 
 test('points: with range filters', () => {

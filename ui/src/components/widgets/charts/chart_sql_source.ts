@@ -761,6 +761,11 @@ export function inFilter(
 /**
  * Create range filters (>= min, <= max) if range is provided.
  */
+/** Filters keeping only the rows where every given field is non-NULL. */
+export function notNullFilters(...fields: string[]): Filter[] {
+  return fields.map((field) => ({field, op: 'is not null'}));
+}
+
 export function rangeFilters(
   field: string,
   range: {readonly min: number; readonly max: number} | undefined,

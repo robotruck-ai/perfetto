@@ -24,6 +24,7 @@ import {
   type QueryConfig,
   type ChartLoaderResult,
   type PointColumnSpec,
+  notNullFilters,
   rangeFilters,
 } from './chart_sql_source';
 import type {
@@ -124,7 +125,12 @@ export class SQLLineChartLoader extends SQLChartLoader<
       type: 'points',
       columns,
       breakdown: this.seriesCol,
-      filters: rangeFilters(this.xCol, config.xRange),
+      // A point needs both coordinates: rows with a NULL one are skipped
+      // (they would also fail the non-null _x / _y read in parseResult).
+      filters: [
+        ...notNullFilters(this.xCol, this.yCol),
+        ...rangeFilters(this.xCol, config.xRange),
+      ],
       orderBy:
         this.seriesCol !== undefined
           ? [{column: '_series'}, {column: '_x'}]
